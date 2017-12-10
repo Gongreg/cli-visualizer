@@ -20,6 +20,19 @@
 #include <numeric>
 #include <stdio.h>
 #include <thread>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <iterator>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
 
 namespace
 {
@@ -146,9 +159,7 @@ void vis::SpectrumTransformer::execute(pcm_stereo_sample *buffer,
             create_bar_row_msg(m_settings->get_spectrum_character(),
                                m_settings->get_spectrum_bar_width());
 
-        uint32_t number_of_bars = static_cast<uint32_t>(std::floor(
-            static_cast<uint32_t>(width) /
-            (bar_row_msg.size() + m_settings->get_spectrum_bar_spacing())));
+        uint32_t number_of_bars = 16;
 
         fftw_execute(m_fftw_plan_left);
 
@@ -160,12 +171,7 @@ void vis::SpectrumTransformer::execute(pcm_stereo_sample *buffer,
         auto top_margin = static_cast<int32_t>(
             m_settings->get_spectrum_top_margin() * win_height);
 
-        auto height = win_height;
-        height -= top_margin;
-        if (is_stereo)
-        {
-            height = height / 2;
-        }
+        auto height = 16;
 
         create_spectrum_bars(m_fftw_output_left, m_fftw_results, height, width,
                              number_of_bars, m_bars_left, m_bars_falloff_left);
@@ -173,8 +179,22 @@ void vis::SpectrumTransformer::execute(pcm_stereo_sample *buffer,
                              number_of_bars, m_bars_right,
                              m_bars_falloff_right);
 
+        std::ostringstream oss;
+
+         if (!m_bars_left.empty())
+         {
+           // Convert all but the last element to avoid a trailing ","
+           std::copy(m_bars_left.begin(), m_bars_left.end()-1,
+               std::ostream_iterator<int>(oss, ","));
+
+           // Now add the last element with no delimiter
+           oss << m_bars_left.back();
+         }
+
+        std::cout << oss.str() << std::endl;
+
         // clear screen before writing
-        writer->clear();
+        //writer->clear();
 
         auto max_bar_height = height;
         if (is_stereo)
@@ -183,12 +203,12 @@ void vis::SpectrumTransformer::execute(pcm_stereo_sample *buffer,
                               // middle
         }
 
-        draw_bars(m_bars_left, m_bars_falloff_left, max_bar_height, true,
-                  bar_row_msg, writer);
-        draw_bars(m_bars_right, m_bars_falloff_right, max_bar_height, false,
-                  bar_row_msg, writer);
-
-        writer->flush();
+//        draw_bars(m_bars_left, m_bars_falloff_left, max_bar_height, true,
+//                  bar_row_msg, writer);
+//        draw_bars(m_bars_right, m_bars_falloff_right, max_bar_height, false,
+//                  bar_row_msg, writer);
+//
+//        writer->flush();
 
         fftw_destroy_plan(m_fftw_plan_left);
 
@@ -603,7 +623,7 @@ void vis::SpectrumTransformer::recalculate_cutoff_frequencies(
     (*high_cutoff_frequencies) = std::vector<uint32_t>(number_of_bars + 1);
     (*freqconst_per_bin) = std::vector<double>(number_of_bars + 1);
 
-    for (auto i = 0u; i <= number_of_bars; ++i)
+    for (auto i = 0u; i < number_of_bars; ++i)
     {
         (*freqconst_per_bin)[i] =
             static_cast<double>(m_settings->get_high_cutoff_frequency()) *
